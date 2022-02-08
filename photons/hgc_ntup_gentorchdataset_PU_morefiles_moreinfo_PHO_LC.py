@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm as tqdm
 import matplotlib.pyplot as plt
 import os
+import optparse
 import os.path as osp
 import awkward0
 import math
@@ -13,6 +14,22 @@ import torch
 import pandas as pd
 from torch_geometric.data import Data
 import glob
+
+
+def parseOptions():
+
+    usage = ('usage: %prog [options]\n'
+             + '%prog -h for help')
+    parser = optparse.OptionParser(usage)
+
+    # input options
+    parser.add_option('',   '--n',  dest='INDEX',  type='string',default='',   help='number of STEP3 file')
+    global opt, args
+    (opt, args) = parser.parse_args()
+
+parseOptions()
+
+
 
 # Function to convert the number of the layer L to the z coordinate
 convLtoZ = {1: 322.10272, 2: 323.0473, 3: 325.07275, 4: 326.01727, 5: 328.0428, 6: 328.98727, 7: 331.01276, 8: 331.9572, 9: 333.9828, 10: 334.92725,
@@ -159,6 +176,49 @@ def cleaning(_feats, pca_algo):
     return cleanpcaarr, pca_axis, origin
 
 
+#### Time information
+def valididx(clus_time):
+    idxar = np.where((clus_time>0.)&(clus_time<1.))[0]
+    return idxar
+
+def trktime(time,terr,win):
+    vidx = valididx(time)
+
+    time = time[vidx]
+    sidx = np.argsort(time)
+
+    time = time[sidx]
+    terr = terr[vidx]
+    terr = terr[sidx]
+    #print("time: ",time)
+    #print("terr: ",terr)
+    endt=-99
+    endidx=-99
+    tw = -99
+    for i in range(len(time)):
+
+        if (abs(time[i]-time[0]) < win) :
+            endt = time[i]
+            endidx = i
+            tw = abs(time[i]-time[0])
+
+    endt2=-99
+    endidx2=-99
+    tw2=-99
+    #print("second time cut:",.21 + tw*0.5)
+    for i in range(len(time)):
+
+        if (abs(time[i]-time[0]) < win + tw*0.5) :
+            endt2 = time[i]
+            endidx2 = i
+            tw2 = abs(time[i]-time[0])
+
+
+    avt1,avt2 = np.average(time[np.where(time<endt)[0]]), np.average(time[np.where(time<endt2)[0]])
+
+    print("avt1,avt2: ",avt1,avt2)
+
+
 
 
 def analyze(filename,idx):
@@ -178,6 +238,8 @@ def analyze(filename,idx):
     clus_en = test['cluster2d_energy'].array()
     clus_rechits = test['cluster2d_rechits'].array()
     clus_rechitseed = test['cluster2d_rechitSeed'].array()
+    clus_t = test['cluster2d_t'].array()
+    clus_dt = test['cluster2d_dt'].array()
 
     calo_eta = test['calopart_eta'].array()
     calo_phi =  test['calopart_phi'].array()
@@ -260,6 +322,7 @@ def analyze(filename,idx):
                 if not os.path.exists(processed_dir):
                     os.makedirs(processed_dir)
 
+                trktime(clus_t[evt][multi_clus2d[evt][trkidx]], clus_dt[evt][multi_clus2d[evt][trkidx]], 0.21)
 
                 cleanedTrk, axis, maxe = cleaning(feats,algo)
 
@@ -283,15 +346,12 @@ def analyze(filename,idx):
     return 0
 
 
+###### --------------------- MAIN --------------------- ######
 raw_dir='/grid_mnt/data__data.polcms/cms/tarabini/GENPHOTESTPU2_noSmearing/step3/'
-fnamelist = [filepath for filepath in glob.glob(raw_dir+'STEP3_*.root')]
-# fnamelist = [raw_dir+'STEP3_1.root']
+fnamelist = raw_dir+'STEP3_'+opt.INDEX+'.root'
+print(fnamelist)
 
 #Loop on PCA algos (four options: std, stdAllLCs, eWeighted, eWeightedAllLCs)
 pca_algos = ['eWeighted']
 
-fc = 0
-for i in tqdm(fnamelist):
-    print("processing file:",i)
-    analyze(i,fc)
-    fc += 1
+analyze(fnamelist,opt.INDEX)
